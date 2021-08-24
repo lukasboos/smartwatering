@@ -19,9 +19,9 @@
 //Zeitverschiebung UTC <-> MEZ (Sommerzeit) = 7200 Sekunden (2 Stunden)
 const long utcOffsetInSeconds = 7200;
 //Zugang WLAN
-const char* SSID = "FRITZ!Box Fon WLAN 7360"; //SSID WLAN-AP
-const char* PSK = "B351-C56y-t2tz-g38s"; //PW-WLAN-AP
-const char* MQTT_BROKER = "192.168.178.20"; //IP-Adresse MQTT-Broker
+const char* SSID = ""; //SSID WLAN-AP
+const char* PSK = ""; //PW-WLAN-AP
+const char* MQTT_BROKER = ""; //IP-Adresse MQTT-Broker
 // Pin zum Ansteuern von Ventil 1
 const int v1 = D8;
 
