@@ -13,15 +13,16 @@
 #include <WiFiUdp.h>
 
 
-
 //Konstanten 
 //Zeitverschiebung UTC <-> MEZ (Winterzeit) = 3600 Sekunden (1 Stunde)
 //Zeitverschiebung UTC <-> MEZ (Sommerzeit) = 7200 Sekunden (2 Stunden)
 const long utcOffsetInSeconds = 7200;
+
+
 //Zugang WLAN
-const char* SSID = ""; //SSID WLAN-AP
-const char* PSK = ""; //PW-WLAN-AP
-const char* MQTT_BROKER = ""; //IP-Adresse MQTT-Broker
+const char* SSID = "FRITZ!Box Fon WLAN 7360"; //SSID WLAN-AP
+const char* PSK = "B351-C56y-t2tz-g38s"; //PW-WLAN-AP
+const char* MQTT_BROKER = "192.168.178.20"; //IP-Adresse MQTT-Broker
 // Pin zum Ansteuern von Ventil 1
 const int v1 = D8;
 
@@ -34,14 +35,12 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 
 
-
 //Variablen
 long lastMsg = 0;
 char msg[50];
 int value = 0;
 float soil = 0;
 float temp = 0;
-
 
 
 void setup() {
@@ -56,6 +55,75 @@ void setup() {
   client.setCallback(callback);
   timeClient.begin();
 }
+
+
+//Zu jeder vollen Stunde werden Bodenfeuchte und Temperatur übermittelt, sowie der 
+//Stand des Schalters zur manuellen Bewässerung abgefragt.
+void loop() {  
+ 
+  long now = millis();
+  
+  if (now - lastMsg > 3600000) {
+    lastMsg = now;
+
+    setup_wifi();
+
+    //Prüfen ob verbunden ansonsten neu verbinden
+    if(!client.connected()){
+      reconnect();
+    }
+    if(!client.loop())
+      client.connect("ESP8266Client");
+
+    //MQTT Übergabeparameter deklarieren
+    String msg = "";
+    char msgFeuchtigkeit[25];
+    char msgTemperatur[25];
+  
+    //Bodenfeuchte einlesen
+    soil = ads.readADC_SingleEnded(0);
+    
+  
+    //Tatsächliche Bodenfeuchte kalkulieren
+    soil = ads.computeVolts(soil);
+    //soil = soil * (0.125/1000.0);
+    //soil = soil * (3.2/1023);
+    soil = soil / 3 * 50;
+    msg = String(soil);
+    msg = msg + "%";
+    Serial.println(soil);
+    msg.toCharArray(msgFeuchtigkeit, 25);
+    client.publish("Bodenfeuchtigkeit", msgFeuchtigkeit);
+    //delay(15000);
+  
+    //Temperatur einlesen
+    temp = ads.readADC_SingleEnded(1);
+    
+  
+    //Tatsächliche Temperatur kalkulieren
+    temp = ads.computeVolts(temp);
+    //temp = temp * (0.125/1000.0);
+    //temp = temp * (3.2/1023);
+    temp = (temp - 0.5) * 100;
+    msg = String(temp);
+    msg = msg + "°C";
+    Serial.println(temp);
+    msg.toCharArray(msgTemperatur, 25);
+    client.publish("Temperatur", msgTemperatur);
+    
+    client.disconnect();
+    WiFi.mode(WIFI_OFF);
+  }
+  //Zeit updaten
+  timeClient.update();
+
+  
+  //Prüfen ob Bodenfeuchte unter Grenzwert und Bewässerungszeitpunkt 6 Uhr morgens
+     if (soil < 22.00 && timeClient.getHours() == 6 && timeClient.getMinutes() <= 30){
+      irrigate();
+  }
+}
+
 
 //WiFi verbinden
 void setup_wifi() {
@@ -81,6 +149,7 @@ void setup_wifi() {
   Serial.println(WiFi.localIP());
 }
 
+
 //Erneut verbinden falls Verbindung abgebrochen
 void reconnect() {
   while(!client.connected()){
@@ -100,6 +169,8 @@ void reconnect() {
     }
   }
 }
+
+
 //Abfragen der MQTT-Nachricht
 void callback(char* topic, byte* message, unsigned int length) {
   Serial.print("Message arrived on topic: ");
@@ -146,79 +217,8 @@ void callback(char* topic, byte* message, unsigned int length) {
 }
 
 
-//Zu jeder vollen Stunde werden Bodenfeuchte und Temperatur übermittelt, sowie der 
-//Stand des Schalters zur manuellen Bewässerung abgefragt.
-
-void loop() {  
- 
-  long now = millis();
-  
-  if (now - lastMsg > 3600000) {
-    lastMsg = now;
-
-    setup_wifi();
-
-    //Prüfen ob verbunden ansonsten neu verbinden
-    if(!client.connected()){
-      reconnect();
-    }
-    if(!client.loop())
-      client.connect("ESP8266Client5");
-
-    //MQTT Übergabeparameter deklarieren
-    String msg = "";
-    char msgFeuchtigkeit[25];
-    char msgTemperatur[25];
-  
-    //Bodenfeuchte einlesen
-    Serial.println("Bodenfeuchte einlesen");
-    soil = ads.readADC_SingleEnded(0);
-    //soil = analogRead(A0);
-    
-  
-    //Tatsächliche Bodenfeuchte kalkulieren
-    soil = ads.computeVolts(soil);
-    //soil = soil * (0.125/1000.0);
-    //soil = soil * (3.2/1023);
-    soil = soil / 3 * 50;
-    msg = String(soil);
-    msg = msg + "%";
-    Serial.println(soil);
-    msg.toCharArray(msgFeuchtigkeit, 25);
-    client.publish("Bodenfeuchtigkeit", msgFeuchtigkeit);
-    //delay(15000);
-  
-    //Temperatur einlesen
-    temp = ads.readADC_SingleEnded(1);
-    //temp = analogRead(A0);
-    
-  
-    //Tatsächliche Temperatur kalkulieren
-    temp = ads.computeVolts(temp);
-    //temp = temp * (0.125/1000.0);
-    //temp = temp * (3.2/1023);
-    temp = (temp - 0.5) * 100;
-    msg = String(temp);
-    msg = msg + "°C";
-    Serial.println(temp);
-    msg.toCharArray(msgTemperatur, 25);
-    client.publish("Temperatur", msgTemperatur);
-    
-    client.disconnect();
-    WiFi.mode(WIFI_OFF);
-  }
-  //Zeit updaten
-  timeClient.update();
-
-  
-  //Prüfen ob Bodenfeuchte unter Grenzwert und Bewässerungszeitpunkt 6 Uhr morgens
-     if (soil < 22.00 && timeClient.getHours() == 6 && timeClient.getMinutes() <= 30){
-      bewaessern();
-  }
-}
-
   //Funktion um 30 Minuten zu bewässern
-void bewaessern (){
+void irrigate(){
     digitalWrite(v1, HIGH);
     Serial.println("Ventil: High");
     delay(1800000);
